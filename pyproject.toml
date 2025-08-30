@@ -1,0 +1,103 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kit-gmail"
+version = "0.1.0"
+description = "Knowledge Integration Tool for Gmail Management"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "rickyarm", email = "rickyarm@users.noreply.github.com"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: Email",
+    "Topic :: Office/Business",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "google-auth>=2.23.0",
+    "google-auth-oauthlib>=1.1.0",
+    "google-api-python-client>=2.100.0",
+    "anthropic>=0.25.0",
+    "openai>=1.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "python-dotenv>=1.0.0",
+    "cryptography>=41.0.0",
+    "keyring>=24.0.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.12.0",
+    "httpx>=0.25.0",
+    "dateparser>=1.1.0",
+    "email-validator>=2.0.0",
+    "python-magic>=0.4.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.5.0",
+    "flake8>=6.0.0",
+    "pre-commit>=3.4.0",
+    "pytest-mock>=3.11.0",
+]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.2.0",
+    "mkdocstrings[python]>=0.22.0",
+]
+
+[project.scripts]
+kit-gmail = "kit_gmail.cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/rickyarm/kit_gmail"
+Repository = "https://github.com/rickyarm/kit_gmail"
+Issues = "https://github.com/rickyarm/kit_gmail/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 88
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=kit_gmail --cov-report=term-missing --cov-report=html"
+
+[tool.coverage.run]
+source = ["src/kit_gmail"]
+omit = ["tests/*", "*/migrations/*"]
