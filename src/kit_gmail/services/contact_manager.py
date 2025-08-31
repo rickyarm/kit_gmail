@@ -2,7 +2,7 @@
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set, Tuple
 import sqlite3
 from pathlib import Path
@@ -39,6 +39,16 @@ class Contact:
     # Metadata
     confidence_score: float = 0.0
     notes: List[str] = field(default_factory=list)
+
+
+def _normalize_datetime(dt: datetime) -> datetime:
+    """Normalize datetime to timezone-aware UTC or timezone-naive."""
+    if dt.tzinfo is None:
+        # If naive, assume UTC
+        return dt.replace(tzinfo=timezone.utc)
+    else:
+        # Convert to UTC
+        return dt.astimezone(timezone.utc)
 
 
 class ContactManager:
@@ -144,10 +154,11 @@ class ContactManager:
         
         # Get or create contact
         if email_addr not in self.contacts:
+            normalized_email_date = _normalize_datetime(email.date)
             contact = Contact(
                 email=email_addr,
-                first_seen=email.date,
-                last_seen=email.date,
+                first_seen=normalized_email_date,
+                last_seen=normalized_email_date,
             )
             self.contacts[email_addr] = contact
             result = "new"
@@ -156,8 +167,17 @@ class ContactManager:
             result = "updated"
 
         # Update contact information
-        contact.last_seen = max(contact.last_seen or email.date, email.date)
-        contact.first_seen = min(contact.first_seen or email.date, email.date)
+        normalized_email_date = _normalize_datetime(email.date)
+        
+        if contact.last_seen:
+            contact.last_seen = max(_normalize_datetime(contact.last_seen), normalized_email_date)
+        else:
+            contact.last_seen = normalized_email_date
+            
+        if contact.first_seen:
+            contact.first_seen = min(_normalize_datetime(contact.first_seen), normalized_email_date)
+        else:
+            contact.first_seen = normalized_email_date
         
         # Update name if available and not set
         if not contact.name and is_sender and email.sender_name:
@@ -440,8 +460,8 @@ class ContactManager:
                     contact = Contact(
                         email=row['email'],
                         name=row['name'],
-                        first_seen=datetime.fromisoformat(row['first_seen']) if row['first_seen'] else None,
-                        last_seen=datetime.fromisoformat(row['last_seen']) if row['last_seen'] else None,
+                        first_seen=_normalize_datetime(datetime.fromisoformat(row['first_seen'])) if row['first_seen'] else None,
+                        last_seen=_normalize_datetime(datetime.fromisoformat(row['last_seen'])) if row['last_seen'] else None,
                         email_count=row['email_count'],
                         sent_count=row['sent_count'],
                         received_count=row['received_count'],

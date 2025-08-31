@@ -60,6 +60,9 @@ def analyze(
         result_table.add_column("Count", style="green")
         
         for key, value in stats.items():
+            # Skip nested dictionaries for the main results table
+            if isinstance(value, dict):
+                continue
             result_table.add_row(key.replace("_", " ").title(), str(value))
         
         console.print(result_table)
