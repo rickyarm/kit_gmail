@@ -81,7 +81,9 @@ def analyze(
             top_domains = contact_stats.get('top_domains', {})
             if top_domains:
                 console.print(f"\n[bold blue]🌐 Top Domains[/bold blue]")
-                for domain, count in list(top_domains.items())[:5]:
+                # Convert to list to avoid name collision with list() function
+                domain_items = [item for item in top_domains.items()][:5]
+                for domain, count in domain_items:
                     console.print(f"• {domain}: {count:,} contacts")
         
         if save:
