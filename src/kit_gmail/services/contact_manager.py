@@ -30,6 +30,7 @@ class Contact:
     is_important: bool = False
     is_spam: bool = False
     is_automated: bool = False
+    is_subscription: bool = False
     
     # Associated data
     domains: Set[str] = field(default_factory=set)
@@ -64,6 +65,13 @@ class ContactManager:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         
         with sqlite3.connect(self.db_path) as conn:
+            # Check if we need to add the subscription column
+            cursor = conn.execute("PRAGMA table_info(contacts)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if 'is_subscription' not in columns and 'email' in columns:
+                # Add the new column to existing table
+                conn.execute("ALTER TABLE contacts ADD COLUMN is_subscription BOOLEAN DEFAULT 0")
+                logger.info("Added is_subscription column to existing contacts table")
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS contacts (
                     email TEXT PRIMARY KEY,
@@ -77,6 +85,7 @@ class ContactManager:
                     is_important BOOLEAN DEFAULT 0,
                     is_spam BOOLEAN DEFAULT 0,
                     is_automated BOOLEAN DEFAULT 0,
+                    is_subscription BOOLEAN DEFAULT 0,
                     confidence_score REAL DEFAULT 0.0,
                     notes TEXT
                 )
@@ -107,6 +116,7 @@ class ContactManager:
             "updated_contacts": 0,
             "frequent_contacts": 0,
             "spam_contacts": 0,
+            "subscription_contacts": 0,
         }
         
         for email in emails:
@@ -136,6 +146,8 @@ class ContactManager:
                 stats["frequent_contacts"] += 1
             if contact.is_spam:
                 stats["spam_contacts"] += 1
+            if contact.is_subscription:
+                stats["subscription_contacts"] += 1
 
         # Save to database
         self._save_contacts_to_db()
@@ -233,6 +245,12 @@ class ContactManager:
                 contact.is_important = True
                 confidence_factors.append(f"importance_score: {important_score:.2f}")
 
+            # Mark subscription contacts
+            subscription_score = self._calculate_subscription_score(contact)
+            if subscription_score > 0.3:
+                contact.is_subscription = True
+                confidence_factors.append(f"subscription_score: {subscription_score:.2f}")
+
             # Refine spam detection
             spam_score = self._calculate_spam_score(contact)
             if spam_score > 0.7:
@@ -275,6 +293,30 @@ class ContactManager:
 
         return min(1.0, score)
 
+    def _calculate_subscription_score(self, contact: Contact) -> float:
+        """Calculate subscription probability for a contact."""
+        score = 0.0
+        
+        # Marketing/newsletter domains
+        subscription_domains = {'newsletter', 'marketing', 'promo', 'deals', 'notifications', 'updates'}
+        if any(sub_term in ' '.join(contact.domains) 
+               for sub_term in subscription_domains):
+            score += 0.4
+        
+        # One-way communication (they send, you don't reply)
+        if contact.received_count > 3 and contact.sent_count == 0:
+            score += 0.3
+        
+        # Automated sender patterns
+        if contact.is_automated:
+            score += 0.2
+        
+        # No-reply addresses
+        if contact.email.startswith(('noreply', 'no-reply', 'donotreply')):
+            score += 0.3
+        
+        return min(1.0, score)
+
     def _calculate_spam_score(self, contact: Contact) -> float:
         """Calculate spam probability for a contact."""
         score = 0.0
@@ -314,6 +356,7 @@ class ContactManager:
         important = sum(1 for c in self.contacts.values() if c.is_important)
         spam = sum(1 for c in self.contacts.values() if c.is_spam)
         automated = sum(1 for c in self.contacts.values() if c.is_automated)
+        subscription = sum(1 for c in self.contacts.values() if c.is_subscription)
         
         # Domain analysis
         domain_counter = Counter()
@@ -330,6 +373,7 @@ class ContactManager:
             "important_contacts": important,
             "spam_contacts": spam,
             "automated_contacts": automated,
+            "subscription_contacts": subscription,
             "total_emails": total_emails,
             "avg_emails_per_contact": round(avg_emails, 2),
             "top_domains": dict(domain_counter.most_common(10)),
@@ -337,6 +381,7 @@ class ContactManager:
                 "frequent": f"{frequent/total*100:.1f}%" if total > 0 else "0%",
                 "important": f"{important/total*100:.1f}%" if total > 0 else "0%",
                 "spam": f"{spam/total*100:.1f}%" if total > 0 else "0%",
+                "subscription": f"{subscription/total*100:.1f}%" if total > 0 else "0%",
             }
         }
 
@@ -420,13 +465,13 @@ class ContactManager:
                     INSERT OR REPLACE INTO contacts 
                     (email, name, first_seen, last_seen, email_count, sent_count, 
                      received_count, is_frequent, is_important, is_spam, is_automated, 
-                     confidence_score, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     is_subscription, confidence_score, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     contact.email, contact.name, contact.first_seen, contact.last_seen,
                     contact.email_count, contact.sent_count, contact.received_count,
                     contact.is_frequent, contact.is_important, contact.is_spam,
-                    contact.is_automated, contact.confidence_score,
+                    contact.is_automated, contact.is_subscription, contact.confidence_score,
                     '; '.join(contact.notes)
                 ))
                 
@@ -469,6 +514,7 @@ class ContactManager:
                         is_important=bool(row['is_important']),
                         is_spam=bool(row['is_spam']),
                         is_automated=bool(row['is_automated']),
+                        is_subscription=bool(row['is_subscription'] if 'is_subscription' in row.keys() else 0),
                         confidence_score=row['confidence_score'],
                         notes=row['notes'].split('; ') if row['notes'] else [],
                     )

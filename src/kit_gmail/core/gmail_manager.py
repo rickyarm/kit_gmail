@@ -34,7 +34,7 @@ class GmailManager:
     def get_messages(
         self,
         query: str = "",
-        max_results: int = 100,
+        max_results: Optional[int] = 100,
         label_ids: Optional[List[str]] = None,
     ) -> List[Dict]:
         """Retrieve messages from Gmail."""
@@ -42,7 +42,11 @@ class GmailManager:
             messages = []
             page_token = None
             
-            while len(messages) < max_results:
+            while max_results is None or len(messages) < max_results:
+                batch_size = 100
+                if max_results is not None:
+                    batch_size = min(100, max_results - len(messages))
+                
                 results = (
                     self.service.users()
                     .messages()
@@ -50,7 +54,7 @@ class GmailManager:
                         userId="me",
                         q=query,
                         labelIds=label_ids,
-                        maxResults=min(100, max_results - len(messages)),
+                        maxResults=batch_size,
                         pageToken=page_token,
                     )
                     .execute()
@@ -67,6 +71,40 @@ class GmailManager:
 
             logger.info(f"Retrieved {len(messages)} messages")
             return messages
+
+        except HttpError as error:
+            logger.error(f"Failed to retrieve messages: {error}")
+            raise
+
+    def get_messages_paginated(
+        self,
+        query: str = "",
+        max_results: int = 500,
+        page_token: Optional[str] = None,
+        label_ids: Optional[List[str]] = None,
+    ) -> Dict:
+        """Retrieve a single page of messages from Gmail."""
+        try:
+            results = (
+                self.service.users()
+                .messages()
+                .list(
+                    userId="me",
+                    q=query,
+                    labelIds=label_ids,
+                    maxResults=max_results,
+                    pageToken=page_token,
+                )
+                .execute()
+            )
+            
+            batch_messages = results.get("messages", [])
+            logger.info(f"Retrieved {len(batch_messages)} messages (page token: {page_token or 'None'})")
+            
+            return {
+                'messages': batch_messages,
+                'nextPageToken': results.get("nextPageToken")
+            }
 
         except HttpError as error:
             logger.error(f"Failed to retrieve messages: {error}")
