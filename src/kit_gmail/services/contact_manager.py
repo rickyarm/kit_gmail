@@ -31,6 +31,7 @@ class Contact:
     is_spam: bool = False
     is_automated: bool = False
     is_subscription: bool = False
+    has_unsubscribe: bool = False
     
     # Associated data
     domains: Set[str] = field(default_factory=set)
@@ -65,13 +66,20 @@ class ContactManager:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         
         with sqlite3.connect(self.db_path) as conn:
-            # Check if we need to add the subscription column
+            # Check if we need to add new columns to existing table
             cursor = conn.execute("PRAGMA table_info(contacts)")
             columns = [row[1] for row in cursor.fetchall()]
+            
             if 'is_subscription' not in columns and 'email' in columns:
-                # Add the new column to existing table
+                # Add the subscription column to existing table
                 conn.execute("ALTER TABLE contacts ADD COLUMN is_subscription BOOLEAN DEFAULT 0")
                 logger.info("Added is_subscription column to existing contacts table")
+                
+            if 'has_unsubscribe' not in columns and 'email' in columns:
+                # Add the unsubscribe column to existing table
+                conn.execute("ALTER TABLE contacts ADD COLUMN has_unsubscribe BOOLEAN DEFAULT 0")
+                logger.info("Added has_unsubscribe column to existing contacts table")
+                
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS contacts (
                     email TEXT PRIMARY KEY,
@@ -86,6 +94,7 @@ class ContactManager:
                     is_spam BOOLEAN DEFAULT 0,
                     is_automated BOOLEAN DEFAULT 0,
                     is_subscription BOOLEAN DEFAULT 0,
+                    has_unsubscribe BOOLEAN DEFAULT 0,
                     confidence_score REAL DEFAULT 0.0,
                     notes TEXT
                 )
@@ -218,8 +227,37 @@ class ContactManager:
             contact.is_spam = True
         if email.is_automated:
             contact.is_automated = True
+        # Check if this email contains unsubscribe options
+        if email.unsubscribe_link or self._has_unsubscribe_content(email):
+            contact.has_unsubscribe = True
 
         return result
+
+    def _has_unsubscribe_content(self, email) -> bool:
+        """Check if email contains unsubscribe-related content."""
+        import re
+        
+        # Combine subject and body content for analysis
+        content = f"{email.subject} {email.body_text}".lower()
+        
+        # Pattern to detect unsubscribe-related content
+        unsubscribe_patterns = [
+            r'unsubscribe',
+            r'opt.?out',
+            r'remove.*from.*list',
+            r'stop.*receiving',
+            r'click.*here.*to.*unsubscribe',
+            r'update.*preferences',
+            r'manage.*subscription',
+            r'email.*preferences'
+        ]
+        
+        # Check if any pattern matches
+        for pattern in unsubscribe_patterns:
+            if re.search(pattern, content, re.IGNORECASE):
+                return True
+                
+        return False
 
     def _classify_contacts(self) -> None:
         """Classify contacts based on interaction patterns."""
@@ -465,14 +503,14 @@ class ContactManager:
                     INSERT OR REPLACE INTO contacts 
                     (email, name, first_seen, last_seen, email_count, sent_count, 
                      received_count, is_frequent, is_important, is_spam, is_automated, 
-                     is_subscription, confidence_score, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     is_subscription, has_unsubscribe, confidence_score, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     contact.email, contact.name, contact.first_seen, contact.last_seen,
                     contact.email_count, contact.sent_count, contact.received_count,
                     contact.is_frequent, contact.is_important, contact.is_spam,
-                    contact.is_automated, contact.is_subscription, contact.confidence_score,
-                    '; '.join(contact.notes)
+                    contact.is_automated, contact.is_subscription, contact.has_unsubscribe,
+                    contact.confidence_score, '; '.join(contact.notes)
                 ))
                 
                 # Insert domains
@@ -515,6 +553,7 @@ class ContactManager:
                         is_spam=bool(row['is_spam']),
                         is_automated=bool(row['is_automated']),
                         is_subscription=bool(row['is_subscription'] if 'is_subscription' in row.keys() else 0),
+                        has_unsubscribe=bool(row['has_unsubscribe'] if 'has_unsubscribe' in row.keys() else 0),
                         confidence_score=row['confidence_score'],
                         notes=row['notes'].split('; ') if row['notes'] else [],
                     )

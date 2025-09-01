@@ -212,6 +212,7 @@ def list(
         table.add_column("Name", style="green", width=20)
         table.add_column("Emails", style="yellow", justify="right")
         table.add_column("Type", style="magenta")
+        table.add_column("Unsub", style="red", justify="center", width=5)
         table.add_column("Score", style="blue", justify="right")
         
         for contact in contacts:
@@ -227,11 +228,15 @@ def list(
             if contact.is_subscription:
                 contact_type.append("Subscription")
             
+            # Show unsubscribe status
+            unsubscribe_status = "✓" if contact.has_unsubscribe else "—"
+            
             table.add_row(
                 contact.email[:30] + "..." if len(contact.email) > 30 else contact.email,
                 contact.name[:20] + "..." if contact.name and len(contact.name) > 20 else contact.name or "—",
                 str(contact.email_count),
                 ", ".join(contact_type) or "Regular",
+                unsubscribe_status,
                 f"{contact.confidence_score:.2f}"
             )
         
@@ -287,10 +292,16 @@ def search(
                 classifications.append("Spam")
             if contact.is_automated:
                 classifications.append("Automated")
+            if contact.is_subscription:
+                classifications.append("Subscription")
             
             if classifications:
                 info_lines.append(f"🏷️  {', '.join(classifications)}")
             
+            # Add unsubscribe status
+            if contact.has_unsubscribe:
+                info_lines.append(f"📧 Has unsubscribe option")
+                
             if contact.domains:
                 info_lines.append(f"🌐 Domains: {', '.join(list(contact.domains)[:3])}")
             
@@ -440,6 +451,8 @@ def export(
                     "is_important": contact.is_important,
                     "is_spam": contact.is_spam,
                     "is_automated": contact.is_automated,
+                    "is_subscription": contact.is_subscription,
+                    "has_unsubscribe": contact.has_unsubscribe,
                     "domains": list(contact.domains),
                     "confidence_score": contact.confidence_score,
                 })
@@ -456,7 +469,8 @@ def export(
                 writer.writerow([
                     "Email", "Name", "First Seen", "Last Seen", "Email Count",
                     "Sent Count", "Received Count", "Is Frequent", "Is Important",
-                    "Is Spam", "Is Automated", "Domains", "Confidence Score"
+                    "Is Spam", "Is Automated", "Is Subscription", "Has Unsubscribe", 
+                    "Domains", "Confidence Score"
                 ])
                 
                 # Data
@@ -473,6 +487,8 @@ def export(
                         contact.is_important,
                         contact.is_spam,
                         contact.is_automated,
+                        contact.is_subscription,
+                        contact.has_unsubscribe,
                         "; ".join(contact.domains),
                         contact.confidence_score,
                     ])
@@ -511,13 +527,14 @@ def report(
         if format == "table":
             # Display as rich table
             table = Table(title=f"Contact Report ({len(contacts)} contacts)")
-            table.add_column("Email", style="cyan", width=30)
+            table.add_column("Email", style="cyan", width=28)
             table.add_column("Name", style="green", width=15)
             table.add_column("Recv", style="blue", justify="right", width=4)
             table.add_column("Sent", style="yellow", justify="right", width=4)
             table.add_column("Tot", style="magenta", justify="right", width=4)
             table.add_column("Sub", style="red", justify="center", width=3)
-            table.add_column("Type", style="white", width=15)
+            table.add_column("Uns", style="orange1", justify="center", width=3)
+            table.add_column("Type", style="white", width=13)
             
             for contact in contacts:
                 # Build classification tags
@@ -534,10 +551,11 @@ def report(
                     tags.append("Automated")
                 
                 subscription_status = "✓" if contact.is_subscription else "—"
+                unsubscribe_status = "✓" if contact.has_unsubscribe else "—"
                 classification = tags[0] if tags else "Regular"
                 
                 # Truncate long emails and names
-                display_email = contact.email[:27] + "..." if len(contact.email) > 30 else contact.email
+                display_email = contact.email[:25] + "..." if len(contact.email) > 28 else contact.email
                 display_name = contact.name[:12] + "..." if contact.name and len(contact.name) > 15 else contact.name or "—"
                 
                 table.add_row(
@@ -547,6 +565,7 @@ def report(
                     str(contact.sent_count),
                     str(contact.email_count),
                     subscription_status,
+                    unsubscribe_status,
                     classification
                 )
             
@@ -573,8 +592,9 @@ def report(
                 # Header
                 writer.writerow([
                     "Email", "Name", "Emails Received", "Emails Sent", "Total Emails",
-                    "Is Subscription", "Is Frequent", "Is Important", "Is Spam", "Is Automated",
-                    "First Seen", "Last Seen", "Domains", "Confidence Score"
+                    "Is Subscription", "Has Unsubscribe", "Is Frequent", "Is Important", 
+                    "Is Spam", "Is Automated", "First Seen", "Last Seen", "Domains", 
+                    "Confidence Score"
                 ])
                 
                 # Data
@@ -586,6 +606,7 @@ def report(
                         contact.sent_count,
                         contact.email_count,
                         contact.is_subscription,
+                        contact.has_unsubscribe,
                         contact.is_frequent,
                         contact.is_important,
                         contact.is_spam,
@@ -611,6 +632,7 @@ def report(
                     "emails_sent": contact.sent_count,
                     "total_emails": contact.email_count,
                     "is_subscription": contact.is_subscription,
+                    "has_unsubscribe": contact.has_unsubscribe,
                     "is_frequent": contact.is_frequent,
                     "is_important": contact.is_important,
                     "is_spam": contact.is_spam,
